@@ -20,7 +20,7 @@ After installation, optionally generate an initramfs file or simply reboot to st
 ### Initramfs
 Note: if your distribution provides an initramfs file, like most Linux distributions do, this chapter can be skipped.
 
-If your distro does not provide an [initramfs](https://en.wikipedia.org/wiki/Initramfs) you can create on using the scripts in the bin/ directory. The use of an initramfs is often optional but it is required when using full disk encryption. To use it, install the two initramfs generation scripts. The scripts support both unencrytped and fully encrypted root filesystems.
+If your distro does not provide an [initramfs](https://en.wikipedia.org/wiki/Initramfs) you can create one using the scripts in the bin/ directory. The use of an initramfs is often optional but it is required when using full disk encryption. To use it, install the two initramfs generation scripts. The scripts support both unencrytped and fully encrypted root filesystems.
 
     install -vm0755 bin/mkinitramfs* /usr/bin
 
