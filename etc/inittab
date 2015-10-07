@@ -1,0 +1,22 @@
+id:3:initdefault:
+
+si:S:sysinit:/etc/rc.d/rc.sysinit
+
+l0:0:wait:/etc/rc.d/rc.0
+l1:1:wait:/etc/rc.d/rc.1
+l2:2:wait:/etc/rc.d/rc.2
+l3:3:wait:/etc/rc.d/rc.3
+l4:4:wait:/etc/rc.d/rc.4
+l5:5:wait:/etc/rc.d/rc.5
+l6:6:wait:/etc/rc.d/rc.6
+
+ca:12345:ctrlaltdel:/sbin/shutdown -t1 -r now
+
+su:S1:respawn:/sbin/sulogin
+
+c1:2345:respawn:/sbin/agetty --noclear tty1 38400 linux
+c2:2345:respawn:/sbin/agetty --noclear tty2 38400 linux
+c3:2345:respawn:/sbin/agetty --noclear tty3 38400 linux
+c4:2345:respawn:/sbin/agetty --noclear tty4 38400 linux
+c5:2345:respawn:/sbin/agetty --noclear tty5 38400 linux
+c6:2345:respawn:/sbin/agetty --noclear tty6 38400 linux

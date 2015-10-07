@@ -1,0 +1,75 @@
+#!/bin/bash
+# Create an initrd image for opening an encrypted device
+
+# Get the actual installed kernel version, not the running kernel, which might be different
+KVER=`file /boot/vmlinuz | perl -pe 's|.* version (.*?) .*|\1|'`
+OUTPUT_FILE=/boot/initramfs-$KVER.cpio.gz
+echo -n "Creating $OUTPUT_FILE..."
+
+# Binaries needed in the image
+BINS="/bin/bash /bin/cat /bin/cp /bin/dd /bin/echo /bin/ln /bin/ls /bin/mknod /bin/killall /bin/mount /bin/rm /bin/sed /bin/uname /bin/mkdir /bin/sh /bin/sleep /bin/umount /bin/grep"
+BINS="$BINS /usr/bin/stat /usr/bin/kbd_mode /usr/bin/setfont /usr/bin/loadkeys /usr/bin/dumpkeys"
+
+SBINS="/sbin/dmsetup /sbin/udevd /sbin/udevadm /sbin/blkid /sbin/modprobe /sbin/insmod /sbin/switch_root"
+SBINS="$SBINS /usr/sbin/cryptsetup"
+
+# Create a temporrary working directory, the X chars are replace by a random number code
+WDIR=$(mktemp -d /tmp/initrd-work.XXXXXXXXXX)
+LIBS=$(mktemp /tmp/libs.XXXXXXXXXX)
+
+# Create base directory structure
+mkdir -p $WDIR/{bin,dev,lib/firmware,run,sbin,sys,proc,usr/lib}
+mkdir -p $WDIR/etc/{modprobe.d,udev/rules.d}
+touch $WDIR/etc/modprobe.d/modprobe.conf
+ln -s lib $WDIR/lib64
+
+# Create necessary device nodes
+mknod -m 640 $WDIR/dev/console c 5 1
+mknod -m 664 $WDIR/dev/null    c 1 3
+
+# Install the init file, a custom script used to unlock the root device
+install -m0755 /usr/bin/mkinitramfs.init $WDIR/init
+
+# Install the binaries to the temporary dir, use ldd to find the linked libraries
+for f in $BINS; do
+  ldd $f | sed "s/\t//" | cut -d " " -f1 >> $LIBS
+  cp $f $WDIR/bin
+done
+
+for sf in $SBINS; do
+  ldd $sf | sed "s/\t//" | cut -d " " -f1 >> $LIBS
+  cp $sf $WDIR/sbin
+done
+
+# Install libraries
+sort $LIBS | uniq | while read lib; do
+  if [ -e "/lib/$lib" ]; then cp "/lib/$lib" $WDIR/lib; fi
+  if [ -e $lib ]; then cp "$lib" $WDIR/lib; fi
+  if [ -e "/usr/lib/$lib" ]; then cp "/usr/lib/$lib" $WDIR/lib; fi
+done
+
+# Copy udev settings
+if [ -d /lib/udev ]; then
+  cp -a /lib/udev $WDIR/lib
+fi
+
+# Install any firmware present. Needed if the network module is included and firmware for it is required, increases image size significantly
+#cp -a /lib/firmware $WDIR/lib
+
+# Copy kernel modules. This is needed if the keyboard/USB/filesystem/etc drivers are compiled as modules
+# Without these modules it would be impossible to load the rootfs or unlock (type in) the encrypted root password
+find /lib/modules/$KVER/kernel/{crypto,fs,lib}                      \
+     /lib/modules/$KVER/kernel/drivers/{block,ata,gpu,hid,input}    \
+     /lib/modules/$KVER/kernel/drivers/{md,firewire,scsi,message}   \
+     /lib/modules/$KVER/kernel/drivers/{pcmcia,virtio,usb}          \
+     -type f 2> /dev/null | cpio --make-directories -p --quiet $WDIR
+cp /lib/modules/$KVER/modules.{builtin,order} $WDIR/lib/modules/$KVER
+depmod -b $WDIR $KVER
+
+# Create the compressed ram image
+cd $WDIR &&
+find . | cpio -o -H newc | gzip -9 > $OUTPUT_FILE
+
+# Clean up
+rm -fr $WDIR $LIBS
+echo "Done."

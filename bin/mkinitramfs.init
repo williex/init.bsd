@@ -1,0 +1,118 @@
+#!/bin/sh
+# Init script for the initramfs. This scripts supports an encrypted root device. Based on the BLFS initramfs scripts and the encrypted root LFS hint
+
+PATH=/bin:/usr/bin:/sbin:/usr/sbin
+export PATH
+
+# Set some empty defaults
+init=/sbin/init
+root=
+cryptdevice=
+rootflags=
+ro="ro"
+rw=
+UDEVD=/sbin/udevd
+
+# Mount virtual filesystems
+mount -n -t devtmpfs devtmpfs /dev
+mount -n -t proc     proc     /proc
+mount -n -t sysfs    sysfs    /sys
+mount -n -t tmpfs    tmpfs    /run
+
+# Get the kernel parameters, stored in /proc/cmdline
+for param in `< /proc/cmdline` ; do
+  case $param in
+    root=*          ) root=${param#root=}                 ;;
+    cryptdevice=*   ) cryptdevice=${param#cryptdevice=}   ;;
+    rootflags=*     ) rootflags=${param#rootflags=}       ;;
+    ro              ) ro="ro"                             ;;
+    rw              ) ro="rw"                             ;;
+  esac
+done
+
+# Autocheck for encryption, if the device is a mapper device, assume encryption. Note, this is not true on LVM devices!
+if [[ "$root" == /dev/mapper/* ]]; then
+  ENCRYPT='yes'
+fi
+
+# Kernel parameters are in the form of: APPEND root=/dev/mapper/root cryptdevice=/dev/sda2:root ro
+cryptstring=$cryptdevice
+cryptdevice=${cryptstring%:*}
+target=${cryptstring#*:}
+
+# Start udev and populate /dev, resolve-names=never: all devices are owned by root
+${UDEVD} --daemon --resolve-names=never > /dev/null 2>&1
+udevadm trigger > /dev/null 2>&1
+udevadm settle > /dev/null 2>&1
+# Load the dm-crypt module, if it is a module but don't show an error message when it doesn't exit (-q)
+modprobe -q dm-crypt
+
+# Mount the root device
+[ -n "$rootflags" ] && rootflags="$rootflags,"
+rootflags="$rootflags$ro"
+
+# Determine how the root device was specified
+case "$root" in
+  /dev/* ) device=$root ;;
+  UUID=* ) eval $root; device="/dev/disk/by-uuid/$UUID"   ;;
+  LABEL=*) eval $root; device="/dev/disk/by-label/$LABEL" ;;
+  ""     ) echo "No root device specified."               ;;
+esac
+
+if [ "$ENCRYPT" == 'yes' ]; then
+  # Check if cryptsetup exists and is executable
+  if [ -x /sbin/cryptsetup ] ; then
+    while ! eval cryptsetup open $cryptdevice $target; do
+      sleep 1;
+    done
+  else
+    echo "Warning cannot find cryptsetup"
+    sleep 1
+  fi
+fi
+
+# If the device is not (yet) available, wait a while
+if [ ! -b "$device" ] ; then 
+  echo "Cannot find $device"
+  sleep 3
+fi
+
+# Still no device, exit
+if [ ! -b "$device" ] ; then
+  echo "Still cannot find $device. Halt..."
+  exit 1
+fi
+
+mkdir /.root
+if [ "$ENCRYPT" == 'yes' ]; then
+  if [ -e "/dev/mapper/${target}" ]; then
+    # Mount root device without registering in mtab
+    if ! mount -n -o "$rootflags" "/dev/mapper/${target}" /.root ; then
+      echo "Cannot mount /dev/mapper/${target} using the following flags: $rootflags, system hang"
+      while true ; do sleep 10000 ; done
+    else
+      echo "Successfully mounted device $root"
+    fi
+  fi
+else
+  # Mount root device without registering in mtab
+  if ! mount -n -o "$rootflags" "$device" /.root ; then
+    echo "Cannot mount root device $device using the following flags: $rootflags, system hang"
+    while true ; do sleep 10000 ; done
+  else
+    echo "Successfully mounted device $root"
+  fi
+fi
+
+# Also checked by the kernel when booting
+if [ ! -e "/.root/$init" ] ; then
+  echo "Cannot find init"
+  exit 2
+fi
+
+# All good, start the init from the encrypted filesystem
+killall -w /sbin/udevd
+
+# Switch_root moves the mounted partitions and overwrites the current root with the actual filesystem
+exec switch_root /.root "$init" "$@"
+

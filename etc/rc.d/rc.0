@@ -1,0 +1,48 @@
+#!/bin/sh
+echo "Saving random seed..."
+/bin/dd if=/dev/urandom of=/var/tmp/random-seed count=1 &>/dev/null
+
+echo "Sending all processes the TERM signal..."
+/sbin/killall5 -15
+sleep 0.5
+
+echo "Sending all processes the KILL signal..."
+/sbin/killall5 -9
+sleep 0.5
+
+echo "Deactivating swap partitions..."
+/sbin/swapoff -a
+
+# Disable this to improve shutdown/reboot speed
+#echo "Saving the system time to hardware clock..."
+#/sbin/hwclock --systohc
+
+echo "Logging reboot/halt event..."
+case "$0" in
+  *6)
+    /sbin/reboot -w
+    ;;
+  *0)
+    /sbin/halt -w
+    ;;
+esac
+
+echo "Unmounting all other currently mounted file systems..."
+umount -a -d -r -t notmpfs,nosysfs,nodevtmpfs,noproc,nodevpts
+
+echo "Remounting root filesystem read-only..."
+/bin/mount -n -o remount,ro /
+
+echo "Flushing filesystem buffers..."
+/bin/sync
+
+case "$0" in
+  *6)
+    echo "Please stand by while rebooting..."
+    /sbin/reboot -d -f -i
+    ;;
+  *0)
+    echo "Power off..."
+    /sbin/halt -d -f -i -p
+    ;;
+esac

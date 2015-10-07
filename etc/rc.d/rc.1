@@ -1,0 +1,11 @@
+#!/bin/sh
+echo "Bringing down network interface eth0..."
+/sbin/ifconfig eth0 down
+
+echo "Sending all processes the TERM signal..."
+/sbin/killall5 -15
+sleep 1
+
+echo "Sending all processes the KILL signal..."
+/sbin/killall5 -9
+

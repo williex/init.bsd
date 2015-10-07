@@ -1,0 +1,127 @@
+#!/bin/sh
+echo "Mounting root device read-only..."
+/bin/mount -n -o remount,ro /
+
+echo "Setup pts..."
+mkdir -p /dev/pts
+
+# These mount points already exist and are moved automatically when using an initramfs and switch_root
+echo "Mounting temporary filesystems..."
+mountpoint -q /proc || mount -n -t proc proc /proc
+mountpoint -q /sys || mount -n -t sysfs sysfs /sys
+
+echo "Starting udev..."
+udevd --daemon
+# Enable trigger event to autoload modules for devices
+udevadm trigger --action=add --type=subsystems
+udevadm trigger --action=add --type=devices
+udevadm settle
+
+# This is needed since eudev (around version 3.0) because it no longer creates static devices nodes, like /dev/fuse and /dev/net/tun
+echo "Creating static device nodes..."
+/bin/kmod static-nodes --format=tmpfiles | \
+while read type name mode uid gid age arg; do
+  [ -e $name ] && continue
+  case "$type" in
+    c|b|c!|b!) mknod -m $mode $name $type $(echo $arg | sed 's/:/ /') ;;
+    d|d!) mkdir $name ;;
+    *) echo "unparseable line ($type $name $mode $uid $gid $age $arg)" >&2 ;;
+  esac
+done
+
+if [ -e /etc/crypttab ]; then
+  echo "Found /etc/crypttab..."
+  grep -v '^#' /etc/crypttab | grep -v '^[[:space:]]*$' | \
+  while read tgt src pw opts ; do
+    # If the source does not exist ignore it. Options are also ignored
+    if ! [ -e "$src" ]; then
+      continue
+    fi
+
+    # If the target already exists, ignore it.
+    if [[ -e /dev/mapper/"$tgt" ]]; then
+      echo "Crypt device $tgt already exists, not trying to open it"
+      continue
+    fi
+
+    if [[ $tgt = "swap" ]]; then
+      OVERWRITE=0
+      # Swap device, hardcoded options, only mount when blkid cannot find a type
+      blkid $src | grep TYPE >/dev/null
+      (( $? == 1 )) && OVERWRITE=1
+      if [[ $OVERWRITE = 1 ]]; then
+        # Swap cipher hardcoded for now
+        cryptsetup --key-file /dev/urandom --cipher aes-cbc-essiv:sha256 open --type plain "$src" "$tgt"
+        mkswap /dev/mapper/"$tgt"
+      else
+        echo "Warning! /etc/crypttab lists $src as a swap target but this partition is not a swap partition, mkswap it first if you are sure."
+      fi
+    else
+      echo "Attempting to open encrypted device $tgt..."
+      cryptsetup --key-file=$pw luksOpen "$src" "$tgt"
+    fi
+  done
+fi
+
+echo "Initializing swap partitions..."
+/sbin/swapon -a
+
+/sbin/fsck -A -a -C
+if [ $? -gt 1 ]; then
+   echo -e "\nFilesystem errors detected. You can probably correct this"
+   echo "problem by running e2fsck manually (eg. with the -v and -y options)."
+   echo -e "After you logout, the system will reboot.\n"
+   PS1="(Repair filesystem)# "
+   export PS1
+   /sbin/sulogin
+   /bin/umount -a -r
+   /sbin/reboot -f
+fi
+
+echo "Remounting root device read-write..."
+/bin/mount -n -v -o remount,rw /
+
+echo "Initializing kernel random number generator..."
+if [ -f /var/tmp/random-seed ]; then
+   /bin/cat /var/tmp/random-seed >/dev/urandom
+fi
+/bin/dd if=/dev/urandom of=/var/tmp/random-seed count=1 &>/dev/null
+
+echo "Setting up utmp..."
+touch /var/run/utmp
+if grep -q '^utmp:' /etc/group; then
+  chmod 664 /var/run/utmp
+  chgrp utmp /var/run/utmp
+fi
+
+echo "Creating virtual filesystems..."
+mkdir -p /run/lock /run/shm
+chmod 1777 /run/shm /run/lock
+ln -sfn /run/shm /dev/shm
+
+echo "Setting up the loopback interface..."
+ip addr add 127.0.0.1/8 label lo dev lo
+ip link set lo up
+
+echo "Setting up hostname..."
+/bin/hostname `cat /etc/hostname`
+
+# Run in the background because this command can take over a second
+echo "Setting system time from hardware clock..."
+/sbin/hwclock --hctosys &
+
+echo "Starting system and kernel log daemons...."
+/sbin/syslogd
+/sbin/klogd -c3
+
+echo "Updating module dependencies..."
+/sbin/depmod -a
+
+echo "Mount remaining filesystems from fstab..."
+mount -a
+
+if [ -f /etc/sysctl.conf ]; then
+  echo "Setting kernel runtime parameters..."
+  sysctl -q -p
+fi
+

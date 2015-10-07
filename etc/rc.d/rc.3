@@ -1,0 +1,21 @@
+#!/bin/sh
+if [ -e /var/lib/alsa/asound.state ]; then
+  echo "Restoring alsa volume levels..."
+  alsactl -L restore
+fi
+
+if [ -e /usr/bin/dbus-uuidgen ]; then
+  echo "Starting d-bus..." &&
+  mkdir -p /run/dbus &&
+  /usr/bin/dbus-uuidgen --ensure &&
+  /usr/bin/dbus-daemon --system
+fi
+
+if [ -x /usr/sbin/acpid ]; then
+  echo "Starting acpid..."
+  /usr/sbin/acpid &
+fi
+
+if [ -x /etc/rc.local ]; then
+  /etc/rc.local
+fi
