@@ -10,13 +10,6 @@ echo "Mounting temporary filesystems..."
 mountpoint -q /proc || mount -n -t proc proc /proc
 mountpoint -q /sys || mount -n -t sysfs sysfs /sys
 
-echo "Starting udev..."
-udevd --daemon
-# Enable trigger event to autoload modules for devices
-udevadm trigger --action=add --type=subsystems
-udevadm trigger --action=add --type=devices
-udevadm settle
-
 # This is needed since eudev (around version 3.0) because it no longer creates static devices nodes, like /dev/fuse and /dev/net/tun
 echo "Creating static device nodes..."
 /bin/kmod static-nodes --format=tmpfiles | \
@@ -28,6 +21,13 @@ while read type name mode uid gid age arg; do
     *) echo "unparseable line ($type $name $mode $uid $gid $age $arg)" >&2 ;;
   esac
 done
+
+echo "Starting udev..."
+udevd --daemon
+# Enable trigger event to autoload modules for devices
+udevadm trigger --action=add --type=subsystems
+udevadm trigger --action=add --type=devices
+udevadm settle
 
 if [ -e /etc/crypttab ]; then
   echo "Found /etc/crypttab..."
