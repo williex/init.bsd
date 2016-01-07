@@ -42,6 +42,9 @@ Copy the generated initramfs to your local boot partition and setup your bootloa
 
 The initramfs file can be fairly large. Depending on your kernel config, you might want to limit the amount of kernel modules included in the image. To do this alter lines 61-65 in mkinitramfs to exclude certain modules from the initramfs file that are not needed to boot.
 
+### Checkboot
+Users with full disk encryption probably have an unencrypted boot partition. This can be combined with something like TPM or a script to check the unencrypted part of the disk for tampering. The file bin/checkboot.0.11.sh is a small script that detects /boot tampering and can be started at boot by installing it as /usr/bin/checkboot and adding it to rc.local. The script will create a warning file in case the unencrypted boot partition is different from the last boot. This can be a kernel update, a change in the bootloader files or something else that needs investigating.
+
 ### Autologin
 With a system using full disk encryption it might be desirable to automatically login to a console after boot so you only have to enter one password after booting. To do this modify the line in /etc/inittab that reads:
 
