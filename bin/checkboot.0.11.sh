@@ -9,7 +9,7 @@ set -e
 # Boot disk
 BOOTDISK=/dev/sda
 
-# Set this to the unencrtyped boot partition
+# Set this to the unencrypted boot partition
 BOOTPART=/dev/sda1
 
 # Set this to the location to store the boot hashes
