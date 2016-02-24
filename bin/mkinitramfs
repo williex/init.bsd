@@ -53,6 +53,31 @@ if [ -d /lib/udev ]; then
   cp -a /lib/udev $WDIR/lib
 fi
 
+# Fix systems where /sbin points to /usr/bin
+if [ -L /sbin ]; then
+  SBINTARGET=`readlink /sbin`
+  mkdir -p $WDIR/$SBINTARGET
+  mv $WDIR/sbin/* $WDIR/$SBINTARGET
+  rmdir $WDIR/sbin
+  ln -s $SBINTARGET $WDIR/sbin
+fi
+# Fix systems where /bin points to /usr/bin
+if [ -L /bin ]; then
+  BINTARGET=`readlink /bin`
+  mkdir -p $WDIR/$BINTARGET
+  mv $WDIR/bin/* $WDIR/$BINTARGET
+  rmdir $WDIR/bin
+  ln -s $BINTARGET $WDIR/bin
+fi
+# Fix systems where /lib points to /usr/lib
+if [ -L /lib ]; then
+  LIBTARGET=`readlink /lib`
+  mkdir -p $WDIR/$LIBTARGET
+  mv $WDIR/lib/* $WDIR/$LIBTARGET
+  rmdir $WDIR/lib
+  ln -s $LIBTARGET $WDIR/lib
+fi
+
 # Install any firmware present. Needed if the network module is included and firmware for it is required, increases image size significantly
 #cp -a /lib/firmware $WDIR/lib
 
