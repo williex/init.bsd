@@ -53,6 +53,9 @@ if [ -d /lib/udev ]; then
   cp -a /lib/udev $WDIR/lib
 fi
 
+# Remove virtualbox rules, not needed during boot and causing errors about missing scripts
+rm -f $WDIR/lib/udev/rules.d/*-vboxdrv.rules
+
 # Fix systems where /sbin points to /usr/bin
 if [ -L /sbin ]; then
   SBINTARGET=`readlink /sbin`
