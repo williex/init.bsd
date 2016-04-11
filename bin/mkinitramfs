@@ -4,6 +4,10 @@
 # Get the actual installed kernel version, not the running kernel, which might be different
 KVER=`file /boot/vmlinuz | perl -pe 's|.* version (.*?) .*|\1|'`
 OUTPUT_FILE=/boot/initramfs-$KVER.cpio.gz
+
+# Possible to override the filename
+[ ! -z $1 ] && OUTPUT_FILE=$1
+
 echo -n "Creating $OUTPUT_FILE..."
 
 # Binaries needed in the image
